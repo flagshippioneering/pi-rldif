@@ -1,2 +1,3 @@
 # pi-rldif
-Code for RL-DIF 
+Code for RL-DIF model 
+
