@@ -9,6 +9,7 @@ from torch_geometric.data import Batch as GraphBatch
 import numpy as np
 from typing import *
 from utils.utils import LongType, FloatTensor, LongTensor
+from tqdm import tqdm
 
 class BaseDiffuser:
     def __init__(self, config):

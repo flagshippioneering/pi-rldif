@@ -1,5 +1,6 @@
 import torch
 from typing import *
+import yaml
 
 FloatTensor = torch.FloatTensor
 LongTensor = torch.LongTensor
@@ -37,3 +38,17 @@ def t2n(x):
         return {k: t2n(v) for k, v in x.items()}
     else:
         return x
+
+class Config:
+    def __init__(self, dictionary):
+        for k, v in dictionary.items():
+            if isinstance(v, dict):
+                setattr(self, k, Config(v))
+            else:
+                setattr(self, k, v)
+
+def load_config(config_path):
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return Config(config)
+

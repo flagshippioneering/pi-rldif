@@ -13,6 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 from loguru import logger
 from utils.utils import t2n
 from model.diffuser import CategoricalBaseDiffuser, CategoricalBaseDiffusionConfig
+from utils.utils import t2n, TRAIN, VALIDATION, INFERENCE, SAMPLING
 
 class CategoricalDiffusionConfig(CategoricalBaseDiffusionConfig):
     name: str
@@ -28,7 +29,13 @@ class CategoricalDiffuser(CategoricalBaseDiffuser):
     def __init__(self, config):
         self.config = config
         super().__init__(config)
-
+    
+    def colocate_data(self, batch):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        for key in batch.keys():
+            if isinstance(batch[key], torch.Tensor):
+                batch[key] = batch[key].to(device)
+        return batch
 
     def init_sample_batch(self, batch: GraphBatch) -> GraphBatch:
         # in this case, we use batch as a template: number of samples, size of each graph, etc
@@ -152,10 +159,6 @@ class CategoricalDiffuser(CategoricalBaseDiffuser):
         buffer["features_true"] = get("features_0", batch, ft_scale)
         buffer["mask"] = get("mask", batch)
 
-        for key in _EXTRA_INFO:
-            if (val := getattr(batch, key, None)) is not None:
-                buffer[key] = list(val)
-
         t_start = t_start or self.T
 
         batch = self.init_sample_batch(batch)
@@ -172,7 +175,7 @@ class CategoricalDiffuser(CategoricalBaseDiffuser):
             batch = self.denoise_batch(batch, t)
 
             tm1 = t - 1
-            if tm1 % self.config.save_every_t_steps == 0:
+            if tm1 % 1 == 0:
                 buffer[f"features_{tm1}_step"] = get("features_step", batch, ft_scale)
                 
         return buffer

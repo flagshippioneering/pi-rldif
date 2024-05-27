@@ -153,8 +153,8 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
             # Convert to labels
             indices = np.asarray([alphabet.index(a) for a in b["seq"]], dtype=np.int32)
             S[i, :l] = indices
-            score[i, :l] = b["score"]
-            names.append(b["title"])
+            score[i, :l] = 100
+            names.append(b["name"])
             stacked_indices.append(indices)
 
         mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)  # atom mask
