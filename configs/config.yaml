@@ -1,4 +1,4 @@
-name: 'RLDIF_CASP15'
+name: 'RLDIF_CATH_SUB100'
 protein_mpnn: False 
 pifold: True
 kwdesign: False
@@ -56,8 +56,8 @@ train:
     ema: 0.999
 
 data:
-    dataset_name: 'casp15'
-    split_name: 'casp15'
+    dataset_name: 'cath_sub100'
+    split_name: 'cath_sub100'
     pifold: True
 
 

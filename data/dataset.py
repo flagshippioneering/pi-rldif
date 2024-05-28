@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch 
 from tqdm import tqdm
+import ast
 
 
 class RLDIFDataset(Dataset):
@@ -27,18 +28,23 @@ class RLDIFDataset(Dataset):
             data_paths =  "./data/raw_data/ts500.json"
         elif config.dataset_name == 'casp15':
             data_paths = "./data/raw_data/casp15.json"
-        elif config.dataset_name == 'cath_train':
-            data_paths = "./data/raw_data/cath_train.json"
         elif config.dataset_name == 'cath_test':
-            data_paths = "./data/raw_data/cath_test.json"
+            data_paths = "./data/raw_data/cath_test.csv"
         elif config.dataset_name == 'cath_single':
-            data_paths = "./data/raw_data/cath_single.json"
+            data_paths = "./data/raw_data/cath_single_chain.csv"
         elif config.dataset_name == 'cath_sub100':
-            data_paths = "./data/raw_data/cath_sub100.json"
+            data_paths = "./data/raw_data/cath_sub_100.csv"
+        else:
+            raise Exception("Invalid dataset name")
 
         dp = data_paths
-        x = json.load(open(dp, 'r'))
-        iterator = tqdm(x)
+        if 'cath' in config.dataset_name:
+            x = pd.read_csv(dp)
+            iterator = tqdm(x.iterrows())
+        else:
+            
+            x = json.load(open(dp, 'r'))
+            iterator = tqdm(x)
 
         num = 0
         for block in iterator:
@@ -72,20 +78,21 @@ class RLDIFDataset(Dataset):
                 artifical_block['O'] = block['coords']['O']
                 artifical_block['N'] = block['coords']['N']
 
-                sample_dict = {
-                    int(index_for_redis + num): self.get_sample_dict(artifical_block)
-                    }
-
                 self.RS.append(artifical_block) 
                 num += 1
             else:
-                sample_dict = self.preprocess_src(
-                    src=block,
-                    index_for_redis=index_for_redis,
-                )  
-
-                index_for_redis += len(sample_dict)
-                self.RS.append(sample_dict)
+                coords = ast.literal_eval(block[1]['coords'].replace("'", '"').replace('\n', '').replace(' ', '').replace('array(', '').replace(')','').replace(',dtype=object','').replace('nan', 'None'))
+                for key in coords:
+                    coords[key] = [np.nan if x is None else x for x in coords[key]]
+                artifical_block = {}
+                artifical_block['name'] = block[1]['name']
+                artifical_block['seq'] = block[1]['seq']
+                artifical_block['coords'] = {}
+                artifical_block['CA'] = np.stack(coords['CA'])
+                artifical_block['C'] = np.stack(coords['C'])
+                artifical_block['O'] = np.stack(coords['O'])
+                artifical_block['N'] = np.stack(coords['N'])
+                self.RS.append(artifical_block)
                 
         print(f"Entered {len(self.RS)} samples into Redis")
         self.batch = None
