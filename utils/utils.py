@@ -1,6 +1,7 @@
 import torch
 from typing import *
 import yaml
+from torch.optim.lr_scheduler import LambdaLR
 
 FloatTensor = torch.FloatTensor
 LongTensor = torch.LongTensor
@@ -52,3 +53,41 @@ def load_config(config_path):
         config = yaml.safe_load(f)
     return Config(config)
 
+def get_polynomial_learning_rate(
+    optimizer,
+    *,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    train_dataloader,
+    step_scale_factor: float,
+    lr_end=1e-7,
+    power=1.0,
+    last_epoch=-1,
+):
+
+    lr_init = optimizer.defaults["lr"]
+
+    def lr_lambda(current_step: int):
+        if num_training_steps is None:
+            try:
+                num_training_steps_final = len(train_dataloader) * step_scale_factor
+            except TypeError:
+                num_training_steps_final = step_scale_factor
+            num_training_steps_final = int(num_training_steps_final)
+        else:
+            num_training_steps_final = num_training_steps
+
+        # print("NUM TRAINING STEPS", num_training_steps_final)
+
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        elif current_step > num_training_steps_final:
+            return lr_end / lr_init  # as LambdaLR multiplies by lr_init
+        else:
+            lr_range = lr_init - lr_end
+            decay_steps = num_training_steps_final - num_warmup_steps
+            pct_remaining = 1 - (current_step - num_warmup_steps) / decay_steps
+            decay = lr_range * pct_remaining**power + lr_end
+            return decay / lr_init  # as LambdaLR multiplies by lr_init
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
