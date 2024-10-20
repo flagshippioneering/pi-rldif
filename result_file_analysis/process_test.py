@@ -3,8 +3,8 @@ import numpy as np
 import ast
 
 #Put the location of the file you want to analyze here
-test_file_path = "../result_files/RLDIF_CATH4.2_results.csv"
-
+test_file_path = "../result_files/RLDIF_100K_CATH_results.csv"
+scTM_threshold = 0.7
 df = pd.read_csv(test_file_path)
 
 
@@ -16,17 +16,21 @@ def accuracy(x, y):
     return num / len(x)
 
 
-def diversity(sequences):
-    if len(set(sequences)) == 1:
-        return 0
+def diversity(sequences, to_sum = False, return_raw = False):
+    sequences = sequences.values
 
     pairwise_similarity = []
-    for i in sequences:
-        for j in sequences:
-            if i != j:
-                res = sum([1 for x, z in zip(i, j) if x == z]) / len(i)
-                pairwise_similarity.append(1 - res)
-
+    n = len(sequences)
+    for i in range(n):
+        for j in range(i+1, n):
+            seq_i = sequences[i]
+            seq_j = sequences[j]
+            res = sum([1 for x, z in zip(seq_i, seq_j) if x == z]) / len(seq_i)
+            pairwise_similarity.append(1 - res)
+    if return_raw:
+        return pairwise_similarity
+    if to_sum:
+        return np.sum(pairwise_similarity)
     return np.mean(pairwise_similarity)
 
 if 'TS500' in test_file_path:
@@ -46,13 +50,13 @@ for i in to_scan:
     res = sub_df.groupby("name").apply(lambda x: diversity(x["pred"])).mean()
     print(f"Diversity: {res.mean()}")
     res = sub_df["tm_score"].mean()
-    print(f"NGCC TM-Score Output: {res}")
+    print(f"TM-Score Output: {res}")
     res = (
-        sub_df[sub_df["tm_score"] > 0.7]
+        sub_df[sub_df["tm_score"] > scTM_threshold]
         .groupby("name")
-        .apply(lambda x: diversity(x["pred"]))
+        .apply(lambda x: diversity(x["pred"], to_sum = True))
     )
-    print(f"Effective Diversity (Diversity for NGCC TM-Score > 0.7): {res.mean()}\t{res.std()}")
+    print(f"Foldable diversity (Diversity for TM-Score > scTM_Threshold): {(2*res.sum())/((sub_df.shape[0]//4)*4*3)}")
     print("\n")
 
 print("Mean out of all 4 sampled")

@@ -5,6 +5,15 @@ import pandas as pd
 import torch 
 from tqdm import tqdm
 import ast
+from Bio.PDB import PDBParser
+
+AMINO_ACIDS = {
+    'ALA': 'A', 'CYS': 'C', 'ASP': 'D', 'GLU': 'E',
+    'PHE': 'F', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
+    'LYS': 'K', 'LEU': 'L', 'MET': 'M', 'ASN': 'N',
+    'PRO': 'P', 'GLN': 'Q', 'ARG': 'R', 'SER': 'S',
+    'THR': 'T', 'VAL': 'V', 'TRP': 'W', 'TYR': 'Y'
+}
 
 
 class RLDIFDataset(Dataset):
@@ -34,6 +43,8 @@ class RLDIFDataset(Dataset):
             data_paths = "./data/raw_data/cath_single_chain.csv"
         elif config.dataset_name == 'cath_sub100':
             data_paths = "./data/raw_data/cath_sub_100.csv"
+        elif config.dataset_name == 'custom_pdbs':
+            data_paths = config.custom_pdb_path
         else:
             raise Exception("Invalid dataset name")
 
@@ -41,8 +52,10 @@ class RLDIFDataset(Dataset):
         if 'cath' in config.dataset_name:
             x = pd.read_csv(dp)
             iterator = tqdm(x.iterrows())
+        elif config.dataset_name == 'custom_pdbs':
+            x = [i.rstrip() for i in open(dp, 'r').readlines()]
+            iterator = tqdm(x)
         else:
-            
             x = json.load(open(dp, 'r'))
             iterator = tqdm(x)
 
@@ -80,6 +93,9 @@ class RLDIFDataset(Dataset):
 
                 self.RS.append(artifical_block) 
                 num += 1
+            elif config.custom_pdb:
+                self.RS.append(self.preprocess_pdb(block))
+                num += 1
             else:
                 coords = ast.literal_eval(block[1]['coords'].replace("'", '"').replace('\n', '').replace(' ', '').replace('array(', '').replace(')','').replace(',dtype=object','').replace('nan', 'None'))
                 for key in coords:
@@ -96,6 +112,28 @@ class RLDIFDataset(Dataset):
                 
         print(f"Entered {len(self.RS)} samples into Redis")
         self.batch = None
+    
+    def preprocess_pdb(self, pdb_path):
+        parser = PDBParser()
+        structure = parser.get_structure("name", pdb_path)
+        model = structure[0]
+        chain = model["A"]
+        seq = ""
+        coords = {'CA': [], 'C': [], 'N': [], 'O': []}
+        for residue in chain:
+            if residue.get_resname() not in AMINO_ACIDS.keys():
+                continue
+            seq += AMINO_ACIDS[residue.get_resname()]
+            coords['CA'].append(residue["CA"].get_coord())
+            coords['C'].append(residue["C"].get_coord())
+            coords['N'].append(residue["N"].get_coord())
+            coords['O'].append(residue["O"].get_coord())
+    
+        return {
+            "name": pdb_path.split("/")[-1].split('.')[0],
+            "seq": seq,
+            "coords": coords,
+        }
 
     def preprocess_src(
         self,
