@@ -53,6 +53,9 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
 
         self.virtual_atoms = nn.Parameter(torch.rand(self.args.network.virtual_num, 3))
 
+        #Free positions means we want those positions to be free, rest frozen
+        self.free_positions = args.free_positions
+
         node_in = 0
         if self.args.network.node_dist:
             pair_num = 6
@@ -140,7 +143,7 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
         names = []
         stacked_indices = []
         for i, b in enumerate(batch):
-            x = np.stack([b[c] for c in ["N", "CA", "C", "O"]], 1)  # [#atom, 4, 3]
+            x = np.stack([b['coords'][c] for c in ["N", "CA", "C", "O"]], 1)  # [#atom, 4, 3]
             l = len(b["seq"])
             x_pad = np.pad(
                 x,
@@ -217,7 +220,14 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
             with torch.no_grad():
                 batch = self.noise_batch(batch)
 
-        output = self(batch)
+        if bool(self.free_positions):
+            #Fix everything but the free positions
+            for i in range(batch['features_0'].shape[0]):
+                if i not in self.free_positions:
+                    batch['features_t'][i] = batch['features_0'][i]
+            output = self(batch)
+        else:
+            output = self(batch)
 
         if mode != SAMPLING:
             output = self.compute_losses(output, mode)
