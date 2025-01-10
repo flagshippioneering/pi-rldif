@@ -10,6 +10,7 @@ import pandas as pd
 import esm
 from transformers import AutoTokenizer
 from model.protein_mpnn import ProteinMPNN
+from run.trainer import train
 
 def test(config, model, dataloader, split_name, foldfunction = None):
 
@@ -214,10 +215,22 @@ def test(config, model, dataloader, split_name, foldfunction = None):
         print(f"Average TM-Score: {np.mean(per_batch_tm_scores)}")
 
     df = pd.DataFrame(results)
-    df.to_csv(str(config.name) + "_results.csv")
+    if config.docker:
+        pdb_base_path = os.environ.get('PDB_BASE_PATH', '/usr/src/app/input_files/')
+        df.to_csv(pdb_base_path + str(config.name) + "_results.csv")
+    else:
+        df.to_csv(str(config.name) + "_results.csv")
 
 if __name__ == '__main__':
     args = load_config('./configs/config.yaml')
+
+    if args.docker is True:
+        pdb_base_path = os.environ.get('PDB_BASE_PATH', '/usr/src/app/input_files/')
+        args = load_config(pdb_base_path + 'config.yaml')
+        args.data.custom_pdb_input = pdb_base_path + args.data.custom_pdb_input
+        args.data.docker = True
+    else:
+        args.data.docker = False
 
     if sum([args.rldif, args.dif_large, args.esmif, args.protein_mpnn]) != 1:
         raise ValueError("Exactly one model must be selected.")
@@ -274,6 +287,12 @@ if __name__ == '__main__':
                 shuffle=False,
                 collate_fn=collate_function,
             )
-    
-    test(args, model, dataloader, args.data.split_name)
+
+    if args.inference:
+        test(args, model, dataloader, args.data.split_name)
+    else:
+        if not args.rldif and not args.diff_large:
+            raise ValueError("Finetuning is only supported for RLDIF and DIF-Large model.")
+        else:
+            train(args, model, dataloader, args.data.split_name)
 

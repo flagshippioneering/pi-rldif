@@ -7,6 +7,7 @@ from tqdm import tqdm
 import ast
 from Bio.PDB import PDBParser
 import random
+import os
 
 AMINO_ACIDS = {
     'ALA': 'A', 'CYS': 'C', 'ASP': 'D', 'GLU': 'E',
@@ -27,6 +28,7 @@ class RLDIFDataset(Dataset):
         self.config = config
         self.chosen_ids = None
         self.test_ids = None
+        self.docker = config.docker
         self.RS = []
 
         self.rldif = config.rldif
@@ -53,7 +55,12 @@ class RLDIFDataset(Dataset):
         dp = data_paths
         if config.custom_pdb_input is not False:
             x = [i.rstrip().split(',') for i in open(dp, 'r').readlines()]
-            iterator = tqdm(x)
+            if self.docker:
+                pdb_base_path = os.environ.get('PDB_BASE_PATH', '/usr/src/app/input_files/')
+                new_x = []
+                for i in x:
+                    new_x.append([f"{pdb_base_path}{i[0].split('/')[-1]}", i[1]])
+            iterator = tqdm(new_x)
         elif 'cath' in config.dataset_name:
             x = pd.read_csv(dp)
             iterator = tqdm(x.iterrows())
