@@ -55,10 +55,10 @@ To build and run the Docker instance for inference, follow these steps:
 
 1. **Build the Docker Image:**
 
-   From the main directory containing the Dockerfile, run:
+   From the main directory containing the pre-build Docker, run:
 
    ```bash
-   docker build -t inverse_folding .
+   docker load -i inverse_folding.tar
    ```
 2. **Run the Docker Instance:**
 
