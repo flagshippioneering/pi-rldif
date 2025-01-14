@@ -295,4 +295,3 @@ if __name__ == '__main__':
             raise ValueError("Finetuning is only supported for RLDIF and DIF-Large model.")
         else:
             train(args, model, dataloader, args.data.split_name)
-
