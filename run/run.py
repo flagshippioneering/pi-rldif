@@ -291,7 +291,17 @@ if __name__ == '__main__':
     if args.inference:
         test(args, model, dataloader, args.data.split_name)
     else:
-        if not args.rldif and not args.diff_large:
+        if not args.rldif and not args.dif_large:
             raise ValueError("Finetuning is only supported for RLDIF and DIF-Large model.")
         else:
-            train(args, model, dataloader, args.data.split_name)
+            master_config = load_config('./configs/master_config.yaml')
+            master_config.EnvironmentConfig.n_gpus = torch.cuda.device_count()
+
+            #n_gpus: !expr torch.cuda.device_count()
+
+            # Go through args and update master_config
+            for key, value in args.items():
+                master_config[key] = value
+
+
+            train(master_config, model, dataloader)

@@ -154,9 +154,7 @@ class TrainConfig():
     continue_training: bool = False
 
     # Subconfig controlling whether we should start with a pretrained model
-    pretrained_model: PretrainedModelConfig = utils.default_factory(
-        PretrainedModelConfig
-    )
+    pretrained_model: PretrainedModelConfig
 
     # Whether or not to use automatic mixed precision
     precision: Precision = Precision.fp32
@@ -169,10 +167,8 @@ class TrainConfig():
 
     # Controls whether training will stop early if a specified metric stops showing improvement
     # in the given number of epochs.
-    early_stopping: EarlyStoppingConfig = utils.default_factory(EarlyStoppingConfig)
-    checkpointing: ModelCheckpointingConfig = utils.default_factory(
-        ModelCheckpointingConfig
-    )
+    early_stopping: EarlyStoppingConfig
+    checkpointing: ModelCheckpointingConfig
 
     # how much debug/info text to print to the terminal. Common values are 0/10/20.
     verbosity: int = 20

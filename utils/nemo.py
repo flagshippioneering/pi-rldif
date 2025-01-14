@@ -24,6 +24,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.rank_zero import rank_zero_info
+import re
 
 # Installing NeMo pulls in a bunch of extra dependencies, some of which conflict with other dependencies we
 # commonly use (most importantly: PyG doesn't like transformers). So, for now, we pull out useful pieces here.
@@ -412,3 +413,40 @@ class ExtendedModelCheckpoint(ModelCheckpoint):
     @property
     def _saved_checkpoint_paths(self) -> Iterable[Path]:
         return Path(self.dirpath).rglob("*.ckpt")
+
+class PatchedModelCheckpoint(ExtendedModelCheckpoint):
+    # https://github.com/Lightning-AI/lightning/issues/16290
+    @classmethod
+    def _format_checkpoint_name(
+        cls,
+        filename: Optional[str],
+        metrics: Dict[str, torch.Tensor],
+        prefix: str = "",
+        auto_insert_metric_name: bool = True,
+    ) -> str:
+        if not filename:
+            # filename is not set, use default name
+            filename = "{epoch}" + cls.CHECKPOINT_JOIN_CHAR + "{step}"
+
+        # check and parse user passed keys in the string
+        groups = re.findall(r"{([^\:}]*)(:?[^}]*)}", filename)
+        if len(groups) >= 0:
+            for name, fmt in groups:
+                if auto_insert_metric_name:
+                    # {name:fmt} to name={name:fmt}
+                    metric_prefix = name + "="
+                else:
+                    metric_prefix = ""
+
+                # 0[name] <- support for dots: https://stackoverflow.com/a/7934969
+                old_substr = "{" + name + fmt + "}"
+                new_substr = metric_prefix + "{0[" + name + "]" + fmt + "}"
+                filename = filename.replace(old_substr, new_substr)
+
+                if name not in metrics:
+                    metrics[name] = torch.tensor(0)
+            filename = filename.format(metrics)
+
+        if prefix:
+            filename = cls.CHECKPOINT_JOIN_CHAR.join([prefix, filename])
+        return filename

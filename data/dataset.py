@@ -60,6 +60,8 @@ class RLDIFDataset(Dataset):
                 new_x = []
                 for i in x:
                     new_x.append([f"{pdb_base_path}{i[0].split('/')[-1]}", i[1]])
+            else:
+                new_x = x
             iterator = tqdm(new_x)
         elif 'cath' in config.dataset_name:
             x = pd.read_csv(dp)

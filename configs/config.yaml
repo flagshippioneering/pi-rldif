@@ -1,11 +1,11 @@
 name: 'ProteinMPNN_Ampersand'
-protein_mpnn: True 
+protein_mpnn: False 
 rldif: False
 esmif: False
-dif_large: False
+dif_large: True
 temp: False
-docker: True
-inference: True
+docker: False
+inference: False
 
 free_positions: False
 num_samples: 4
@@ -79,7 +79,7 @@ data:
     dataset_name: 'cath_sub100'
     split_name: 'cath_sub100'
     #custom_pdb_input: "/home/pi-user/pdb_path/input_file.csv"
-    #custom_pdb_input: "/home/pi-user/ampersand_bio/ampersand_bio_input.csv"
-    custom_pdb_input: "input.csv"
+    custom_pdb_input: "/home/pi-user/ampersand_bio/input.csv"
+    #custom_pdb_input: "input.csv"
 
 

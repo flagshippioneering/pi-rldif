@@ -15,7 +15,6 @@ from ai.tools.dl import all_reduce_avg_, barrier, find_unused_parameters, t2n
 
 from run.base import BaseApproach, DLCallback, get_last_lr, DLTrainer
 from run.base import PatchedModelCheckpoint as ModelCheckpoint
-import rrg
 import plotly.graph_objects as go
 
 __all__ = [
@@ -42,11 +41,12 @@ class TrainingInfoCallback(DLCallback):
         self._max_scatter_points = max_scatter_points
 
     def on_train_start(self, trainer: "DLTrainer", approach: "BaseApproach"):
+        import rrg
         report = rrg.Report(f"Training info for {self.model_name}")
         self._add_lr_info(report, trainer, approach)
         #self.s2.store_report(report, self.model_name + "/training_info")
 
-    def _add_lr_info(self, report: "rrg.Report", trainer: "DLTrainer", approach: "BaseApproach"):
+    def _add_lr_info(self, report, trainer: "DLTrainer", approach: "BaseApproach"):
         train_config = self.config.train
         total_steps = train_config.n_train_steps
         if total_steps is None:
@@ -89,7 +89,7 @@ class TrainingInfoCallback(DLCallback):
             )
 
             lr_plots[f"Schedule {i_sched}"] = fig
-
+        import rrg
         report.add_elements(rrg.SectionHeader("Learning rates"), rrg.Cols(lr_plots))
 
 

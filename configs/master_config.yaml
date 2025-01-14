@@ -1,0 +1,162 @@
+NamedConfig:
+  name: null
+
+Optimizers:
+  adam: "adam"
+  adamW: "adamW"
+  sgd: "sgd"
+  dummy: "dummy"
+
+OptimizerConfig:
+  clip_grad_norm: 5.0
+  clip_grad_by_param: false
+  gradient_accumulation_steps: 1
+  optimizer: "adam"
+
+LRSchedules:
+  constant: "constant"
+  poly: "poly"
+  decay_on_plateau: "decay_on_plateau"
+
+LRConfig:
+  lr: null
+  warmup_fraction: null
+  warmup_steps: 0
+  gamma: null
+  metric: "epoch_test"
+  patience: 10
+  schedule: "constant"
+  lr_args: {}
+
+DataLoaderConfig:
+  batch_size_per_gpu: null
+  inference_batch_size_per_gpu: null
+  n_workers: 1
+  n_cached_blocks: null
+  reload_dataloaders_every_n_epochs: 0
+
+ModelProfilingConfig:  # This section can be used elsewhere and nested directly.
+  enabled: false
+  wait: 10
+  warmup: 10
+  active: 10
+  repeat: 1
+  record_shapes: true
+  profile_memory: true
+  with_stack: true
+  with_flops: true
+  log_path: null
+
+ImprovementMode:
+  min: "min"
+  max: "max"
+
+ModelCheckpointingConfig:
+  n_best_to_save: -1
+  save_every_n_epochs: null
+  metric: "epoch_test"
+  mode: "min"
+
+PretrainedModelConfig:  # This section can also be used elsewhere and nested directly.
+  name: null
+  best: true
+  last: null
+  epoch: null
+  step: null
+  version: null
+
+EarlyStoppingConfig:
+  patience: null
+  metric: null
+  mode: null
+
+Precision:
+  fp32: 32
+  fp16: "16-mixed"
+  bf16: "bf16-mixed"
+
+Matmul32Precision:
+  highest: "highest"
+  high: "high"
+  medium: "medium"
+
+LoggerType:
+  tensorboard: "tensorboard"
+  wandb: "wandb"
+  mlflow: "mlflow"
+
+TrainConfig:
+  n_epochs: null
+  stop_after_n_epochs: null
+  n_train_steps: null
+  epoch_train_steps: null
+  epoch_val_steps: null
+  continuous_dataloader: false
+  continue_training: false
+  pretrained_model:
+    name: null
+    best: true
+    last: null
+    epoch: null
+    step: null
+    version: null
+  precision: 32
+  float32_matmul_precision: "highest"
+  strategy: null
+  early_stopping:
+    patience: null
+    metric: null
+    mode: null
+  checkpointing:
+    n_best_to_save: -1
+    save_every_n_epochs: null
+    metric: "epoch_test"
+    mode: "min"
+  verbosity: 20
+  tb_log_frequency: 1
+  ema: null
+  data:
+    batch_size_per_gpu: null
+    inference_batch_size_per_gpu: null
+    n_workers: 1
+    n_cached_blocks: null
+    reload_dataloaders_every_n_epochs: 0
+  opt:
+    clip_grad_norm: 5.0
+    clip_grad_by_param: false
+    gradient_accumulation_steps: 1
+    optimizer: "adam"
+  lr:
+    lr: null
+    warmup_fraction: null
+    warmup_steps: 0
+    gamma: null
+    metric: "epoch_test"
+    patience: 10
+    schedule: "constant"
+    lr_args: {}
+  profiler:
+    enabled: false
+    wait: 10
+    warmup: 10
+    active: 10
+    repeat: 1
+    record_shapes: true
+    profile_memory: true
+    with_stack: true
+    with_flops: true
+    log_path: null
+  test: false
+  metric_damping: null
+  logger: "tensorboard"
+
+CheckpointConfig:
+  best: null
+  last: null
+  epoch: null
+  step: null
+  version: null
+  ema: false
+
+EnvironmentConfig:
+  devices: null

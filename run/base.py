@@ -12,17 +12,15 @@ from pytorch_lightning.loggers import (
 )
 import wandb
 import pandas as pd
-from torch.profiler.profiler import schedule, tensorboard_trace_handler
-from pytorch_lightning.profilers import PyTorchProfiler
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loops.training_epoch_loop import _TrainingEpochLoop
-import torch.Tensor as Tensor
+import torch
 import os
 from loguru import logger
 import lightning_fabric as lf
 
 from utils.nemo import EMACallback, PatchedModelCheckpoint
-from utils.lr_schedules import lr_schedules
+import utils.lr_schedules as lr_schedules
 
 # The base LightningModule that all approaches inherit from. Should not be instantiated on its own.
 #: Optional[Dict[str, BaseModel]]
@@ -755,7 +753,7 @@ class DLCallback(pl.Callback):
         """
 
     def on_before_backward(
-        self, trainer: pl.Trainer, approach: BaseApproach, loss: Tensor
+        self, trainer: pl.Trainer, approach: BaseApproach, loss: torch.Tensor
     ) -> None:
         """Called before ``loss.backward()``."""
 
