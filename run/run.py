@@ -296,12 +296,9 @@ if __name__ == '__main__':
         else:
             master_config = load_config('./configs/master_config.yaml')
             master_config.EnvironmentConfig.n_gpus = torch.cuda.device_count()
+            args.env = master_config.EnvironmentConfig
+            for key, value in master_config.TrainConfig.__dict__.items():
+                if key not in args.train.__dict__.keys():
+                    setattr(args.train, key, value)
 
-            #n_gpus: !expr torch.cuda.device_count()
-
-            # Go through args and update master_config
-            for key, value in args.items():
-                master_config[key] = value
-
-
-            train(master_config, model, dataloader)
+            train(args, model, dataloader)
