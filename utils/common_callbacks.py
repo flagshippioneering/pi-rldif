@@ -355,7 +355,7 @@ class DefaultLogger(DLCallback):
     ) -> None:
         if trainer.is_global_zero:
             approach.log("train_loss_batch", outputs["loss"])
-            # approach.log("epoch_train", outputs["loss"], on_epoch=True, batch_size=approach.config.data.batch_size_per_gpu)
+            approach.log("epoch_train", outputs["loss"], on_epoch=True, batch_size=approach.config.data['batch_size_per_gpu'])
             schedulers = approach.lr_schedulers()
             if schedulers is not None:
                 if not isinstance(schedulers, List):
@@ -421,7 +421,7 @@ class PretrainedModelCallback(DLCallback):
         super().__init__()
 
     def on_train_start(self, trainer: pl.Trainer, approach: BaseApproach) -> None:
-        if self.config.pretrained_model.name is not None:
+        if self.config.pretrained_model['name'] is not None:
             cfg = self.config.pretrained_model
             approach.model.load_checkpoint(
                 cfg.name,

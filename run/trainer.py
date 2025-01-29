@@ -14,8 +14,8 @@ def train(config, model, dataloaders):
             {k: dl for k, dl in dataloaders.items() if k == "test"}, config.train
         ),
         SamplingCallback(config, dataloaders["test"], name="test"),
-        SamplingCallback(config, dataloaders["single_chain"], name="single_chain"),
-        SamplingCallback(config,  dataloaders["short"], name="short"),
+        # SamplingCallback(config, dataloaders["single_chain"], name="single_chain"),
+        # SamplingCallback(config,  dataloaders["short"], name="short"),
         StopOnNaNCallback(),
     ]
 
@@ -23,6 +23,7 @@ def train(config, model, dataloaders):
         config=config,
         approach=sma,
         callbacks=train_callbacks,
+        name = config.name
     )
     trainer.train()
 

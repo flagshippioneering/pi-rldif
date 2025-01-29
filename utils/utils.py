@@ -4,6 +4,9 @@ import yaml
 from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 from transformers import AutoTokenizer
+from tqdm import tqdm
+from loguru import logger
+
 tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D", cache_dir="./transformers")
 
 FloatTensor = torch.FloatTensor
@@ -14,6 +17,12 @@ TRAIN = 0
 VALIDATION = 1
 INFERENCE = 2
 SAMPLING = 3
+
+class ComputeMode():
+    TRAIN = 0
+    VALIDATION = 1
+    INFERENCE = 2
+    SAMPLING = 3
 
 N_AA = 21
 
@@ -177,6 +186,39 @@ def slice_dict(d: dict, keys: Iterable[Any], fail_if_missing: bool = False) -> d
             # calling set(set(...)) does recompute the hash table, I think, based on some timing tests
             keys = set(keys)
         return {k: v for k, v in d.items() if k in keys}
+    
+class lqdm(tqdm):
+    """lqdm is a tqdm progress bar that prints via logger.info.
+    Same behavior as tqdm, but default options are smoothing=0 and leave=False.
+    All constructor arguments are passed to tqdm.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("smoothing", 0)
+        super().__init__(*args, ncols=0, **kwargs)
+
+    @staticmethod
+    def status_printer(_):
+        def progress(s):
+            logger.opt(depth=0).info(s.strip())
+
+        return progress
+
+    def moveto(self, _):
+        # override tqdm's implementation
+        self.fp.flush()
+
+
+def calculate_diversity(sequences):
+    pairwise_similarity = []
+    n = len(sequences)
+    for i in range(n):
+        for j in range(i+1, n):
+            seq_i = sequences[i]
+            seq_j = sequences[j]
+            res = sum([1 for x, z in zip(seq_i, seq_j) if x == z]) / len(seq_i)
+            pairwise_similarity.append(1 - res)
+    return np.mean(pairwise_similarity)
 
 mpnn_index_to_AA = {
     0: 'A',

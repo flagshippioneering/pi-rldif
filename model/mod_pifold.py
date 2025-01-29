@@ -18,9 +18,10 @@ from model.categorical_diffuser import (
     CategoricalDiffusionConfig,
 )
 from torch.nn.utils.rnn import pad_sequence
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Iterable, Union, Any
 from collections.abc import Mapping, Sequence
 from torch_geometric.data import Batch as GraphBatch
+from utils.utils import ComputeMode, lqdm
 
 
 #####################CODE FROM PAPER BELOW#####################
@@ -41,6 +42,7 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
         super().__init__(args)  # Initialize nn.Module
         """Graph labeling network"""
         self.args = args
+        self._verbosity = 10
         node_features = args.network.node_features
         edge_features = args.network.edge_features
         hidden_dim = args.network.hidden_dim
@@ -461,7 +463,7 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
         c = atom_C - atom_Ca
         a = torch.cross(b, c, dim=-1)
 
-        if self.args.network.virtual_num > 0:
+        if self.args.network['virtual_num'] > 0:
             virtual_atoms = self.virtual_atoms / torch.norm(
                 self.virtual_atoms, dim=1, keepdim=True
             )
@@ -488,7 +490,7 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
                 )
             )
 
-        if self.args.network.virtual_num > 0:
+        if self.args.network['virtual_num'] > 0:
             for i in range(self.virtual_atoms.shape[0]):
                 # # true atoms
                 for j in range(0, i):
@@ -541,7 +543,7 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
             )
             edge_dist.append(edge_mask_select(rbf))
 
-        if self.args.network.virtual_num > 0:
+        if self.args.network['virtual_num'] > 0:
             for i in range(self.virtual_atoms.shape[0]):
                 edge_dist.append(
                     edge_mask_select(
@@ -578,19 +580,19 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
         E_dist = torch.cat(tuple(edge_dist), dim=-1)
 
         h_V = []
-        if self.args.network.node_dist:
+        if self.args.network['node_dist']:
             h_V.append(V_dist)
-        if self.args.network.node_angle:
+        if self.args.network['node_angle']:
             h_V.append(V_angles)
-        if self.args.network.node_direct:
+        if self.args.network['node_direct']:
             h_V.append(V_direct)
 
         h_E = []
-        if self.args.network.edge_dist:
+        if self.args.network['edge_dist']:
             h_E.append(E_dist)
-        if self.args.network.edge_angle:
+        if self.args.network['edge_angle']:
             h_E.append(E_angles)
-        if self.args.network.edge_direct:
+        if self.args.network['edge_direct']:
             h_E.append(E_direct)
 
         _V = torch.cat(h_V, dim=-1)
@@ -618,6 +620,78 @@ class InverseFoldingDiffusionPiFoldModel(CategoricalDiffuser, nn.Module):
         batch_id = sparse_idx[:, 0]
 
         return X, S, score, _V, _E, E_idx, batch_id, mask_bw, mask_fw, decoding_order
+    
+    def training_step(self, batch):
+        """
+        Execute a single training step. Requires that `model.step(batch, ComputeMode.TRAIN)` returns a single
+        loss value or dictionary containing the key 'loss'.
+
+        Args:
+            batch: any data structure passed to step()
+
+        Returns either:
+            torch.Tensor: single torch element specifying the averaged loss
+            or
+            Dict[str,Any]: dictionary of anything that the model can return. Must contain a 'loss' key.
+        """
+        self.train()
+        loss = self.step(batch, ComputeMode.TRAIN)
+        if torch.is_tensor(loss):
+            pass
+        elif isinstance(loss, Dict):
+            assert "loss" in loss, "Train mode must return a loss."
+            assert torch.is_tensor(loss["loss"]), "loss must be a tensor."
+        else:
+            raise ValueError(
+                f"Output of model.step(_, ComputeMode.TRAIN) has unsupported type: {type(loss)}"
+            )
+        return loss
+
+    def lqdm(self, iterable: Iterable = None, **kwargs) -> lqdm:
+        """Provide a model-specific progress bar.
+
+        Args:
+            iterable (Iterable, optional): Defaults to None.
+            **kwargs: Keyword arguments passed to utils.lqdm
+
+        Returns:
+            Union[lqdm, Iterable]: Returns the iterable, possibly wrapped in lqdm
+        """
+        kwargs.setdefault("smoothing", 0.3)
+        kwargs.setdefault("mininterval", 1)
+        kwargs.setdefault("disable", self._verbosity < 10)
+        return lqdm(iterable, **kwargs)
+
+    def set_verbosity(self, verbosity: int):
+        """Set training verbosity. 0=report epoch steps. 10=report batch steps. 20=report computational steps."""
+        self._verbosity = verbosity
+    
+    def validation_step(self, batch) -> Union[torch.Tensor, Dict[str, Any]]:
+        """
+        Execute a single validation step. Requires that `model.step(batch, ComputeMode.VALIDATION)` returns a single
+        loss value or dictionary containing the key 'loss'.
+
+        Args:
+            batch: any data structure passed to step()
+
+        Returns either:
+            torch.Tensor: single torch element specifying the averaged loss
+            or
+            Dict[str,Any]: dictionary of anything that the model can return. Must contain a 'loss' key.
+        """
+        self.eval()
+        with torch.no_grad():
+            loss = self.step(batch, ComputeMode.VALIDATION)
+            if torch.is_tensor(loss):
+                pass
+            elif isinstance(loss, Dict):
+                assert "loss" in loss, "Validation mode must return a loss."
+                assert torch.is_tensor(loss["loss"]), "loss must be a tensor."
+            else:
+                raise ValueError(
+                    f"Output of model.step(_, ComputeMode.VALIDATION) has unsupported type: {type(loss)}"
+                )
+        return loss
 
 
 """============================================================================================="""

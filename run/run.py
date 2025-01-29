@@ -3,7 +3,7 @@ import os
 import torch
 from data.dataset import RLDIFDataset
 from torch.utils.data import DataLoader
-from utils.utils import load_config, featurize_GTrans, mpnn_index_to_AA, slice_dict
+from utils.utils import load_config, featurize_GTrans, mpnn_index_to_AA, slice_dict, calculate_diversity, Config
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -11,6 +11,10 @@ import esm
 from transformers import AutoTokenizer
 from model.protein_mpnn import ProteinMPNN
 from run.trainer import train
+from torch.utils.data import DataLoader
+import logomaker
+import shutil
+import matplotlib.pyplot as plt
 
 def test(config, model, dataloader, split_name, foldfunction = None):
 
@@ -220,6 +224,30 @@ def test(config, model, dataloader, split_name, foldfunction = None):
         df.to_csv(pdb_base_path + str(config.name) + "_results.csv")
     else:
         df.to_csv(str(config.name) + "_results.csv")
+        pdb_base_path = './'
+
+    for name in df['name'].unique():
+        if os.path.exists(pdb_base_path + name):
+            shutil.rmtree(pdb_base_path + name)
+        os.mkdir(pdb_base_path + name)
+        sequences = df[df['name'] == name]["pred"].values
+        with open(pdb_base_path + name + "/diversity", "w") as f:
+            f.write(str(calculate_diversity(sequences)))
+
+        max_length = max(len(seq) for seq in sequences)
+
+        for start in range(0, max_length, 100):
+            chunk = [seq[start:start+100] for seq in sequences if len(seq) > start]
+            sequence_df = logomaker.alignment_to_matrix(chunk)
+            
+            # Create the sequence logo
+            fig, ax = plt.subplots(figsize=(100, 5))
+            logo = logomaker.Logo(sequence_df, ax=ax)
+            logo.style_spines(visible=False)
+            logo.style_spines(spines=('left', 'bottom'), visible=True)
+            logo.ax.set_ylabel('Frequency')
+            plt.savefig(f"{pdb_base_path}{name}/chunk_{start//100}_sequence_logo.png", dpi=300, bbox_inches='tight')
+            plt.show()
 
 if __name__ == '__main__':
     args = load_config('./configs/config.yaml')
@@ -268,37 +296,69 @@ if __name__ == '__main__':
             res = k.replace("model.mpnn.", "")
             ckpt_dict_new[res] = checkpoint["state_dict"][k]
         model.load_state_dict(ckpt_dict_new)
-
-    model = model.eval()
+    
     args.data.rldif = args.rldif
     args.data.protein_mpnn = args.protein_mpnn
-    dataset = RLDIFDataset(args.data)
-
-    if args.rldif or args.dif_large:
-        collate_function = model.collate_fn
-    elif args.esmif:
-        collate_function = featurize_GTrans
-    elif args.protein_mpnn:
-        collate_function = dataset.collate_fn
-
-    dataloader = DataLoader(
-                dataset,
-                batch_size=4,
-                shuffle=False,
-                collate_fn=collate_function,
-            )
 
     if args.inference:
+        model = model.eval()
+        dataset = RLDIFDataset(args.data)
+
+        if args.rldif or args.dif_large:
+            collate_function = model.collate_fn
+        elif args.esmif:
+            collate_function = featurize_GTrans
+        elif args.protein_mpnn:
+            collate_function = dataset.collate_fn
+
+
+        dataloader = DataLoader(
+                    dataset,
+                    batch_size=4,
+                    shuffle=False,
+                    collate_fn=collate_function,
+                )
+
+        
         test(args, model, dataloader, args.data.split_name)
     else:
         if not args.rldif and not args.dif_large:
             raise ValueError("Finetuning is only supported for RLDIF and DIF-Large model.")
         else:
+
             master_config = load_config('./configs/master_config.yaml')
-            master_config.EnvironmentConfig.n_gpus = torch.cuda.device_count()
+            #master_config.EnvironmentConfig.n_gpus = torch.cuda.device_count()
+            master_config.EnvironmentConfig.n_gpus = 1
             args.env = master_config.EnvironmentConfig
             for key, value in master_config.TrainConfig.__dict__.items():
                 if key not in args.train.__dict__.keys():
                     setattr(args.train, key, value)
+            
+            
+            #You are almost there, just have to make a dataset for each
+            #Input files are then name of split (Train, Test) and the list of pdbs for that particular split
+            datasets = {}
+            for dataset in ['train', 'val', 'test']:
+                if dataset == 'train':
+                    setattr(args.data, 'custom_pdb_input', args.data.train_pdb_input)
+                elif dataset == 'val':
+                    setattr(args.data, 'custom_pdb_input', args.data.val_pdb_input)
+                elif dataset == 'test':
+                    setattr(args.data, 'custom_pdb_input', args.data.test_pdb_input)
+                
+                datasets[dataset] = RLDIFDataset(args.data)
 
-            train(args, model, dataloader)
+            collate_function = model.collate_fn
+
+            dataloaders = {
+                k: DataLoader(
+                    ds,
+                    batch_size=args.train.data.batch_size_per_gpu,
+                    shuffle=(k == "train"),
+                    collate_fn=collate_function,
+                )
+
+                for k, ds in datasets.items()
+            }
+
+            train(args, model, dataloaders)

@@ -1,5 +1,5 @@
 from glob import glob
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Iterable
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader,DistributedSampler, RandomSampler
 import pytorch_lightning as pl
@@ -18,9 +18,11 @@ import torch
 import os
 from loguru import logger
 import lightning_fabric as lf
+import json
 
 from utils.nemo import EMACallback, PatchedModelCheckpoint
 import utils.lr_schedules as lr_schedules
+from utils.utils import lqdm
 
 # The base LightningModule that all approaches inherit from. Should not be instantiated on its own.
 #: Optional[Dict[str, BaseModel]]
@@ -86,11 +88,10 @@ class BaseApproach(pl.LightningModule):
         pass
 
     def get_opt(self, params: Any, config) -> Optimizer:
-        opt_type = config.opt.optimizer
+        opt_type = config.opt['optimizer']
 
         kw = dict()
-        if config.lr.lr is not None:
-            kw["lr"] = config.lr.lr
+        kw["lr"] = config.lr['lr']
 
         if (opt_type == "adam") or (opt_type is None):
             opt = Adam(params, **kw)
@@ -109,7 +110,7 @@ class BaseApproach(pl.LightningModule):
         step_scale_factor: int,
         config,
     ) -> Dict[str, Any]:
-        sched_type = config.lr.schedule
+        sched_type = config.lr['schedule']
 
         d = {"interval": "step", "frequency": 1}
 
@@ -117,19 +118,19 @@ class BaseApproach(pl.LightningModule):
             sched = lr_schedules.get_constant_schedule(optimizer)
 
         elif sched_type == "poly":
-            if config.lr.gamma is None:
+            if config.lr['gamma'] is None:
                 raise ValueError(
                     "No gamma found. If you are using an poly learning rate, you must supply a gamma value in the LRConfig "
                     "(ie. config.train.lr.gamma)."
                 )
             sched = lr_schedules.get_polynomial_decay_schedule_with_warmup_dynamic(
                 optimizer,
-                num_warmup_steps=config.lr.warmup_steps,
+                num_warmup_steps=config.lr['warmup_steps'],
                 num_training_steps=config.n_train_steps,
                 train_dataloader=self.dataloaders["train"],
                 step_scale_factor=step_scale_factor,
-                power=config.lr.gamma,
-                **config.lr.lr_args,
+                power=config.lr['gamma'],
+                # **config.lr['lr_args'],
             )
 
         elif sched_type == "decay_on_plateau":
@@ -166,6 +167,27 @@ class BaseApproach(pl.LightningModule):
 
         return d
 
+    def set_training_pbar(self, trainer: pl.Trainer) -> lqdm:
+        lqdm_kwargs: Dict[str, Any] = {"desc": f"Epoch {trainer.current_epoch}: TRAIN"}
+        if self.config.n_train_steps is not None:
+            lqdm_kwargs["total"] = self.config.n_train_steps
+            lqdm_kwargs["initial"] = trainer.global_step
+        elif self.config.epoch_train_steps is not None:
+            lqdm_kwargs["total"] = self.config.epoch_train_steps
+        else:
+            lqdm_kwargs["total"] = (
+                len(self.train_dataloader())
+                # // self.config.opt.gradient_accumulation_steps
+                // (trainer.num_nodes * trainer.num_devices)
+            )
+        self.pbar = self.lqdm(**lqdm_kwargs)
+
+    def lqdm(self, iterable: Optional[Iterable] = None, **kwargs) -> lqdm:
+        kwargs.setdefault("smoothing", 0.3)
+        kwargs.setdefault("mininterval", 1)
+        kwargs.setdefault("disable", self.config.verbosity < 10)
+        return lqdm(iterable, **kwargs)
+
 class SingleModelApproach(BaseApproach):
     def __init__(
         self,
@@ -188,15 +210,21 @@ class SingleModelApproach(BaseApproach):
     def train_dataloader(self) -> DataLoader[Any]:
         if not hasattr(self, "dataloaders"):
             self.dataloaders = {"train": self.dataloader_func("train", self)}
-        if self.config.data.reload_dataloaders_every_n_epochs > 0 and self.trainer.current_epoch > 0:
-            if hasattr(self, "dataloader_func"):
-                self.dataloaders = {"train": self.dataloader_func("train", self)}
-            else:
-                raise RuntimeError(
-                    "No dataloader function found - cannot reload dataloaders. Either provide a dataloader function instead of a dataloader or set config.train.data.reload_every_n_epochs to 0"
-                )
-        dl = self.set_dataloader_batch_size(self.dataloaders["train"])
-        dl = self.set_dataloader_dist_sampler(self.dataloaders["train"])
+        try:
+            if self.config.data.reload_dataloaders_every_n_epochs > 0 and self.trainer.current_epoch > 0:
+                if hasattr(self, "dataloader_func"):
+                    self.dataloaders = {"train": self.dataloader_func("train", self)}
+                else:
+                    raise RuntimeError(
+                        "No dataloader function found - cannot reload dataloaders. Either provide a dataloader function instead of a dataloader or set config.train.data.reload_every_n_epochs to 0"
+                    )
+        except AttributeError:
+            pass
+
+        dl = self.dataloaders["train"]
+        #Commented this out for now, but if you want to modify sampling or batch size, uncomment and implement
+        # dl = self.set_dataloader_batch_size(self.dataloaders["train"])
+        # dl = self.set_dataloader_dist_sampler(self.dataloaders["train"])
         return dl
 
     def configure_optimizers(self) -> Dict[str, Union[Optimizer, Dict[str, Any]]]:
@@ -213,7 +241,11 @@ class SingleModelApproach(BaseApproach):
             step_scale_factor *= self.config.epoch_train_steps
         if self.config.n_epochs is not None:
             step_scale_factor *= self.config.n_epochs
-        step_scale_factor /= self.config.opt.gradient_accumulation_steps
+
+        try:
+            step_scale_factor /= self.config.opt.gradient_accumulation_steps
+        except AttributeError:
+            pass
         step_scale_factor /= self.trainer.num_nodes * self.trainer.num_devices
 
         scheduler = self.get_lr(
@@ -329,6 +361,8 @@ class DLTrainer:
         # if the for loop did not terminate early, we need to add a callback
         bare_ckpt_tag = f"./models/{self.name}"
         ckpt_tag = f"./models/{self.name}/{self.run_version}"
+        if not os.path.exists(ckpt_tag):
+            os.makedirs(ckpt_tag)
 
         for cb in callbacks:
             if isinstance(cb, ModelCheckpoint):
@@ -386,12 +420,34 @@ class DLTrainer:
         self.ckpt_dir = mc.dirpath
         if self.trainer.global_rank == 0:
             #s2.get_path(str(ckpt_tag), mkdir=s2.MkdirOptions.directory)
-            config.write(str(self.ckpt_dir) + "/full_config.yaml")
-            config.model.write(str(self.ckpt_dir) + "/config.yaml")  # type: ignore
 
-        if self.trainer.global_rank == 0:
-            os.makedirs(self.log_dir, exist_ok=True)
-            config.write(self.log_dir + "/config.yaml")
+            config_path = str(self.ckpt_dir) + "/config.json"
+            with open(config_path, "w") as file:
+                to_write = config.__dict__
+                to_write['data'] = to_write['data'].__dict__
+                to_write['env'] = to_write['env'].__dict__
+                to_write['model_mpnn'] = to_write['model_mpnn'].__dict__
+                to_write['pifold_model'] = to_write['pifold_model'].__dict__
+                to_write['train'] = to_write['train'].__dict__
+                to_write['train']['data'] = to_write['train']['data'].__dict__
+                to_write['train']['opt'] = to_write['train']['opt'].__dict__
+                to_write['train']['lr'] = to_write['train']['lr'].__dict__
+                to_write['train']['checkpointing'] = to_write['train']['checkpointing'].__dict__
+                to_write['train']['early_stopping'] = to_write['train']['early_stopping'].__dict__
+                to_write['train']['pretrained_model'] = to_write['train']['pretrained_model'].__dict__
+                to_write['train']['profiler'] = to_write['train']['profiler'].__dict__
+                to_write['pifold_model']['network'] = to_write['pifold_model']['network'].__dict__
+                json.dump(to_write, file)
+            
+            # config_path = str(self.ckpt_dir) + "/config.yaml"
+
+            # config.model.write(str(self.ckpt_dir) + "/config.yaml")  # type: ignore
+
+        # if self.trainer.global_rank == 0:
+        #     os.makedirs(self.log_dir, exist_ok=True)
+        #     with open(self.log_dir + "/config.json", "w") as file:
+        #         json.dump(config, file)
+            # config.write(self.log_dir + "/config.yaml")
 
         # approach.set_logger(self.trainer.logger)
         self.approach = approach
@@ -480,14 +536,20 @@ class DLTrainer:
 
         if automatic_optimization:
             # Trainer only accepts these args if auto opt. Otherwise, the approach needs to handle them.
-            if train_config.opt.clip_grad_norm:
-                d["gradient_clip_val"] = train_config.opt.clip_grad_norm
-                d["gradient_clip_algorithm"] = "norm"
+            try:
+                if train_config.opt.clip_grad_norm:
+                    d["gradient_clip_val"] = train_config.opt.clip_grad_norm
+                    d["gradient_clip_algorithm"] = "norm"
+            except AttributeError:
+                pass
 
-            if train_config.opt.gradient_accumulation_steps:
-                d["accumulate_grad_batches"] = (
-                    train_config.opt.gradient_accumulation_steps
-                )
+            try:
+                if train_config.opt.gradient_accumulation_steps:
+                    d["accumulate_grad_batches"] = (
+                        train_config.opt.gradient_accumulation_steps
+                    )
+            except AttributeError:
+                pass
 
         d["precision"] = train_config.precision
 
@@ -503,11 +565,16 @@ class DLTrainer:
                 ):
                     d["strategy"] = "ddp"
 
-        d["devices"] = env_config.devices or "auto"
+        #d["devices"] = env_config.devices or "auto"
+        #HARCODING CHANGE TO USE MULTI-GPU
+        d['devices'] = [0]
 
-        d["reload_dataloaders_every_n_epochs"] = (
-            train_config.data.reload_dataloaders_every_n_epochs
-        )
+        try:
+            d["reload_dataloaders_every_n_epochs"] = (
+                train_config.data.reload_dataloaders_every_n_epochs
+            )
+        except:
+            AttributeError
 
         # if train_config.profiler.enabled:
         #     sched = schedule(
@@ -792,6 +859,7 @@ class CoreCallback(DLCallback):
             approach.trainer.fit_loop.max_batches = self.old_max_batches
             self.old_max_batches = None
 
+        #There was a training pbar but I removed it for now
         approach.set_training_pbar(trainer)
 
         # LOGGING
@@ -879,15 +947,15 @@ class CoreCallback(DLCallback):
 
 
 def get_last_lr(schedule, train_config) -> float:
-    if isinstance(schedule, lr_schedules.ReduceLROnPlateau):
-        # this one's complicated
-        try:
-            return schedule._last_lr[0]
-        except AttributeError:
-            # might not have called step yet
-            return train_config.lr.lr  # peak LR
-    else:
-        return schedule.get_last_lr()[0]  # type: ignore
+    # if isinstance(schedule, lr_schedules.ReduceLROnPlateau):
+    #     # this one's complicated
+    #     try:
+    #         return schedule._last_lr[0]
+    #     except AttributeError:
+    #         # might not have called step yet
+    #         return train_config.lr.lr  # peak LR
+    # else:
+    return schedule.get_last_lr()[0]  # type: ignore
 
 def get_loop(config):
     class NewLoop(_TrainingEpochLoop):
