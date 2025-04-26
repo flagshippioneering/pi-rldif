@@ -12,7 +12,7 @@ To begin, modify the config file located in the `config` directory. Only change 
   The name of the result file when running in inference mode.
 
 - **inference** (bool):  
-  Set to `true` for inference mode (implemented) or `false` for training mode (to be implemented).
+  Set to `true` for inference mode or `false` for training mode.
 
 - **protein_mpnn** (bool):  
   Enable or disable running inference with ProteinMPNN.
@@ -41,15 +41,26 @@ To begin, modify the config file located in the `config` directory. Only change 
 - **custom_pdb_input**:  
   The name of the input CSV file. When running a regular inference script, provide the absolute path. Refer to Dockerfile instructions for running within a Docker file.
 
-### Running Inference
+- **data.train_pdb_input**:
+  Path to the input train CSV file. Must be defined for finetuning. The CSV contains two columns one for absolute path of pdb file and another for chain ID.
 
-After updating the config file with the required parameters, execute the following command from the appropriate directory:
+- **data.val_pdb_input**:
+  Path to the input val CSV file. Must be defined for finetuning. The CSV contains two columns one for absolute path of pdb file and another for chain ID.
+
+- **data.test_pdb_input**:
+  Path to the input test CSV file. Must be defined for finetuning. The CSV contains two columns one for absolute path of pdb file and another for chain ID.
+
+### Running Scripts
+
+After updating the config file with the required parameters for either inference or finetuning, execute the following command from the appropriate directory:
 
 ```bash
 python -m run.run
 ```
 
-## Dockerfile Instructions
+## Dockerfile Instructions 
+
+Docker functionality has only been used for inference, not finetuning.
 
 To build and run the Docker instance for inference, follow these steps:
 
@@ -77,6 +88,9 @@ To build and run the Docker instance for inference, follow these steps:
 
   Ensure that you provide the absolute path in place of `/home/input_file_directory/`.
 
+## Features to come
+
+1. RL functionality, it has been integrated I am just testing it now.
 
 
 
