@@ -92,5 +92,11 @@ To build and run the Docker instance for inference, follow these steps:
 
 1. RL functionality, it has been integrated I am just testing it now.
 
-
+### How to cite this work
+``` @article{ektefaie2024reinforcement,
+  title={Reinforcement learning on structure-conditioned categorical diffusion for protein inverse folding},
+  author={Ektefaie, Yasha and Viessmann, Olivia and Narayanan, Siddharth and Dresser, Drew and Kim, J Mark and Mkrtchyan, Armen},
+  journal={arXiv preprint arXiv:2410.17173},
+  year={2024}}
+ ```
 
